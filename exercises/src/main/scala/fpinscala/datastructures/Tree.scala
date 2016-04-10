@@ -27,19 +27,19 @@ object Tree {
     case Branch (l, r) => Branch (map(l)(f), map (r)(f))
   }
 
-  def fold[A, B] (t : Tree[A], lf: A => B)(bf : (B,B) => B): B = t match {
+  def fold[A, B] (t : Tree[A])(lf: A => B)(bf : (B,B) => B): B = t match {
     case Leaf (v) => lf (v)
-    case Branch (l, r) => bf (fold(l, lf)(bf), fold(r, lf)(bf))
+    case Branch (l, r) => bf (fold(l)(lf)(bf), fold(r)(lf)(bf))
   }
 
-  def sizeViaFold[A] (t : Tree[A]): Int = fold(t, a => 1)(_ + _ + 1)
+  def sizeViaFold[A] (t : Tree[A]): Int = fold(t)(a => 1)(_ + _ + 1)
 
-  def maximumViaFold (t : Tree[Int]): Int = fold (t, a => a)((x,y)=> Math.max(x,y))
+  def maximumViaFold (t : Tree[Int]): Int = fold (t)(a => a)((x,y)=> Math.max(x,y))
 
-  def depthViaFold[A] (t : Tree[A]): Int = fold (t, a => 0)((x,y) => 1 + Math.max(x,y))
+  def depthViaFold[A] (t : Tree[A]): Int = fold (t)(a => 0)((x,y) => 1 + Math.max(x,y))
 
   def mapViaFold [A, B] (t : Tree[A])(f : A => B): Tree[B] =
-    fold(t, b => Leaf(f(b)): Tree[B])(Branch(_, _))
+    fold(t)(b => Leaf(f(b)): Tree[B])(Branch(_, _))
 }
 
 object TreeTest {
