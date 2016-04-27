@@ -34,6 +34,24 @@ object Par {
 
   def sortPar(parList: Par[List[Int]]) = map(parList)(_.sorted)
 
+  def sequence [A] (ps : List[Par[A]]): Par[List[A]] =
+    ps.foldRight(unit(List[A]()))((a,b)=> map2(a,b)(_ :: _))
+
+  def lazyUnit [A] (a: => A): Par[A] = fork (unit(a))
+
+  def asyncF[A,B] (f : A => B): A => Par[B] =
+    a => lazyUnit(f(a))
+
+  def parMap [A,B] (ps: List[A]) (f : A => B): Par[List[B]] = fork {
+    val fbs = ps.map(asyncF(f))
+    sequence(fbs)
+  }
+
+  def parFilter [A] (as: List[A]) (f : A => Boolean): Par[List[A]] = fork {
+    val fbs = as.map(asyncF((a: A) => if (f(a)) List(a) else List()))
+    map (sequence(fbs))(_.flatten)
+  }
+
   def equal[A](e: ExecutorService)(p: Par[A], p2: Par[A]): Boolean = 
     p(e).get == p2(e).get
 
