@@ -19,6 +19,8 @@ object Prop {
   type TestCases = Int
   type FailedCase = String
   type SuccessCount = Int
+  type MaxSize = Int
+
   def forAll[A](gen: Gen[A])(f: A => Boolean): Prop = ???
 }
 
@@ -34,19 +36,18 @@ case class Falsified (failure: FailedCase, success: SuccessCount) extends Result
   def isFalsified = true
 }
 
-
-case class Prop (run: (TestCases, RNG) => Result) {
+case class Prop (run: (MaxSize, TestCases, RNG) => Result) {
   def && (p : Prop): Prop = Prop {
-    (n, rng) => this.run (n, rng) match {
-      case Passed => p.run (n, rng)
+    (max, n, rng) => this.run (max, n, rng) match {
+      case Passed => p.run (max, n, rng)
       case a => a
     }
   }
 
   def || (p : Prop): Prop = Prop {
-    (n, rng) => this.run (n, rng) match {
+    (max, n, rng) => this.run (max, n, rng) match {
       case Passed => Passed
-      case a => p.run (n, rng)
+      case a => p.run (max, n, rng)
     }
   }
 }
@@ -77,11 +78,14 @@ case class SGen [+A] (g: Int => Gen [A]) {
     SGen (g andThen(_ flatMap(f)))
 
   def map [B] (f : A => B): SGen [B] = SGen (g andThen (_ map f))
+
+
 }
 
 object SGen {
   def listOf [A] (g : Gen [A]) : SGen [List[A]] = SGen (n => g.listOfN(n))
 
+  def listOf1 [A] (g : Gen [A]): SGen [List[A]] = SGen (n => g.listOfN(n max 1))
 }
 
 object Gen {
@@ -110,3 +114,10 @@ object Gen {
 }
 
 
+object GenTest {
+  def main(args: Array[String]): Unit = {
+
+    val smallInt = Gen.choose(-10, 10)
+    val maxProp = forAll(smallInt)
+  }
+}
