@@ -94,11 +94,39 @@ object Monoid {
   def foldLeft[A, B](as: List[A])(z: B)(f: (B, A) => B): B =
     foldMap(as, dual(endoMonoid[B]))(a => b => f(b, a))(z)
 
-  def foldMapV[A, B](as: IndexedSeq[A], m: Monoid[B])(f: A => B): B =
-    sys.error("todo")
+  def foldMapV[A, B](as: IndexedSeq[A], m: Monoid[B])(f: A => B): B = {
+    val len = as.length
+    if (len == 0) m.zero
+    else if (len == 1) f(as(0))
+    else {
+      val (left, right) = as.splitAt(len / 2)
+      m.op(foldMapV(left, m)(f), foldMapV(right, m)(f))
+    }
+  }
 
-  def ordered(ints: IndexedSeq[Int]): Boolean =
-    sys.error("todo")
+  //this is not efficient, we should track min, max as part of monoid type
+  //to avoid re-computation
+  def ordered(ints: IndexedSeq[Int]): Boolean = {
+    type M = (IndexedSeq[Int], Boolean)
+
+    val m = new Monoid[M] {
+      def zero = (IndexedSeq.empty[Int], true)
+
+      def op(a1: M, a2: M): M = {
+        if (a1._2 && a2._2) {
+          val firstMax = a1._1.max
+          val secondMin = a2._1.min
+          if (secondMin > firstMax)
+            (a1._1 ++ a2._1, true)
+          else
+            (a1._1 ++ a2._1, false)
+        } else
+          (a1._1 ++ a2._1, false)
+      }
+    }
+    val result = foldMapV(ints, m)(a => (IndexedSeq(a), true))
+    result._2
+  }
 
   sealed trait WC
 
@@ -112,9 +140,38 @@ object Monoid {
   def parFoldMap[A, B](v: IndexedSeq[A], m: Monoid[B])(f: A => B): Par[B] =
     sys.error("todo")
 
-  val wcMonoid: Monoid[WC] = sys.error("todo")
+  val wcMonoid: Monoid[WC] = new Monoid[WC] {
+    def op(a1: WC, a2: WC): WC = (a1, a2) match {
+      case (Stub(c1), Stub(c2)) => Stub(c1 + c2)
+      case (Stub(c1), Part(l2, w, r2)) => Part(c1 + l2, w, r2)
+      case (Part(l1, w, r1), Stub(c2)) => Part(l1, w, r1 + c2)
+      case (Part(l1, w1, r1), Part(l2, w2, r2)) =>
+        Part(l1, w1 + w2 + (if ((r1 + l2).isEmpty) 0 else 1), r2)
+    }
 
-  def count(s: String): Int = sys.error("todo")
+    def zero: WC = Stub("")
+  }
+
+  def count(s: String): Int = {
+
+    def countInner(s: String): WC = {
+      val trimmed = s.trim
+      if (trimmed.length == 0) Stub("")
+      else if (!trimmed.contains(' ')) Stub(trimmed)
+      else {
+        val len = s.length
+        val (left, right) = s.splitAt(len / 2)
+        wcMonoid.op(countInner(left), countInner(right))
+      }
+    }
+
+    def helper (w: String) = if (w.isEmpty) 0 else 1
+
+    countInner(s) match {
+      case Stub (_) => 1
+      case Part (l, w, r) => w + helper (l) + helper (r)
+    }
+  }
 
   def productMonoid[A, B](A: Monoid[A], B: Monoid[B]): Monoid[(A, B)] =
     sys.error("todo")
