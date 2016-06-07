@@ -12,6 +12,7 @@ import language.higherKinds
 import language.implicitConversions
 
 trait Applicative[F[_]] extends Functor[F] {
+  self =>
 
   def map2[A, B, C](fa: F[A], fb: F[B])(f: (A, B) => C): F[C] =
     apply(map(fa)(f.curried): F[B => C])(fb)
@@ -42,9 +43,22 @@ trait Applicative[F[_]] extends Functor[F] {
   def factor[A, B](fa: F[A], fb: F[B]): F[(A, B)] =
     map2(fa, fb)((_, _))
 
-  def product[G[_]](G: Applicative[G]): Applicative[({type f[x] = (F[x], G[x])})#f] = ???
+  def product[G[_]](G: Applicative[G]): Applicative[({type f[x] = (F[x], G[x])})#f] =
+    new Applicative[({type f[x] = (F[x], G[x])})#f] {
+      override def unit[A](a: => A): (F[A], G[A]) = (self.unit(a), G.unit(a))
 
-  def compose[G[_]](G: Applicative[G]): Applicative[({type f[x] = F[G[x]]})#f] = ???
+      override def map2[A, B, C](fa: (F[A], G[A]), fb: (F[B], G[B]))
+                                (f: (A, B) => C): (F[C], G[C]) =
+        (self.map2(fa._1, fb._1)(f), G.map2(fa._2, fb._2)(f))
+    }
+
+  def compose[G[_]](G: Applicative[G]): Applicative[({type f[x] = F[G[x]]})#f] =
+    new Applicative[({type f[x] = F[G[x]]})#f] {
+      override def unit[A](a: => A): F[G[A]] = self.unit(G.unit(a))
+
+      override def apply[A, B](f: F[G[A => B]])(fa: F[G[A]]): F[G[B]] =
+        self.map2(f, fa)((ff: G [A => B], ffa: G[A]) => G.apply(ff)(ffa))
+    }
 
   def sequenceMap[K, V](ofa: Map[K, F[V]]): F[Map[K, V]] = ???
 }
@@ -88,7 +102,12 @@ object Monad {
   }
 
   def composeM[F[_], N[_]](implicit F: Monad[F], N: Monad[N], T: Traverse[N]):
-  Monad[({type f[x] = F[N[x]]})#f] = ???
+  Monad[({type f[x] = F[N[x]]})#f] = new Monad[({type f[x] = F[N[x]]})#f] {
+    override def unit[A](a: => A): F[N[A]] = F.unit(N.unit(a))
+
+    override def flatMap [A, B] (ma: F[N[A]]) (f : A => F[N[B]]): F [N[B]] = ???
+
+  }
 }
 
 sealed trait Validation[+E, +A]
@@ -111,7 +130,20 @@ object Applicative {
       a zip b map f.tupled
   }
 
-  def validationApplicative[E]: Applicative[({type f[x] = Validation[E, x]})#f] = ???
+  def validationApplicative[E]: Applicative[({type f[x] = Validation[E, x]})#f] =
+    new Applicative[({type f[x] = _root_.fpinscala.applicative.Validation[E, x]})#f] {
+      def unit[A](a: => A): Success[A] = Success(a)
+
+      override def map2[A, B, C](av: Validation[E, A], bv: Validation[E, B])(f: (A, B) => C) = {
+        (av, bv) match {
+          case (Failure(h1, t1), Failure(h2, t2)) => Failure(h1, t1 ++ Vector(h2) ++ t2)
+          case (Success(a), Success(b)) => Success(f(a, b))
+          case (e@Failure(_, _), _) => e
+          case (_, e@Failure(_, _)) => e
+
+        }
+      }
+    }
 
   type Const[A, B] = A
 
@@ -130,7 +162,16 @@ trait Traverse[F[_]] extends Functor[F] with Foldable[F] {
   def sequence[G[_] : Applicative, A](fma: F[G[A]]): G[F[A]] =
     traverse(fma)(ma => ma)
 
-  def map[A, B](fa: F[A])(f: A => B): F[B] = ???
+  type Id[A] = A
+
+  val idMonad = new Monad[Id] {
+    def unit[A](a: => A) = a
+
+    override def flatMap[A, B](a: A)(f: A => B): B = f(a)
+  }
+
+  def map[A, B](fa: F[A])(f: A => B): F[B] =
+    traverse[Id, A, B](fa)(f)(idMonad)
 
   import Applicative._
 
