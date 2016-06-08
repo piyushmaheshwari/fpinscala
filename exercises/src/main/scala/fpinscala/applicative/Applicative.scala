@@ -167,14 +167,16 @@ trait Traverse[F[_]] extends Functor[F] with Foldable[F] {
     traverse(fma)(ma => ma)
 
 
-  case class Id[A] (get: A)
+  case class Id[A](get: A)
+
   val IdApplicative = new Applicative[Id] {
-    def unit [A] (a: =>A) = Id (a)
-    override def map2[A, B, C](fa: Id[A], fb: Id[B])(f: (A, B) => C): Id [C] =
-      Id (f (fa.get, fb.get))
+    def unit[A](a: => A) = Id(a)
+
+    override def map2[A, B, C](fa: Id[A], fb: Id[B])(f: (A, B) => C): Id[C] =
+      Id(f(fa.get, fb.get))
   }
 
-  def map[A, B](fa: F[A])(f: A => B): F[B] = {
+  override def map[A, B](fa: F[A])(f: A => B): F[B] = {
     val x = (a: A) => IdApplicative.unit(f(a))
     traverse(fa)(x).get
   }
@@ -202,14 +204,26 @@ trait Traverse[F[_]] extends Functor[F] with Foldable[F] {
   def zipWithIndex[A](fa: F[A]): F[(A, Int)] =
     mapAccum(fa, 0)((a, s) => ((a, s), s + 1))._1
 
-  def reverse[A](fa: F[A]): F[A] = ???
+  def reverse1[A](fa: F[A]): F[A] = traverseS(fa)((a: A) => (for {
+    s1 <- get[List[A]]
+    _ <- set(s1.tail)
+  } yield (s1.head))).run(toList(fa))._1
 
-  override def foldLeft[A, B](fa: F[A])(z: B)(f: (B, A) => B): B = ???
+  def reverse[A](fa: F[A]): F[A] =
+    mapAccum(fa, toList(fa))((a, s) => (s.head, s.tail))._1
+
+  override def foldLeft[A, B](fa: F[A])(z: B)(f: (B, A) => B): B =
+    mapAccum(fa, z)((a, s) => ((), f(s, a)))._2
 
   def fuse[G[_], H[_], A, B](fa: F[A])(f: A => G[B], g: A => H[B])
-                            (implicit G: Applicative[G], H: Applicative[H]): (G[F[B]], H[F[B]]) = ???
+                            (implicit G: Applicative[G], H: Applicative[H]): (G[F[B]], H[F[B]]) =
+    traverse[({type f[x] = (G[x], H[x])})#f, A, B](fa)(a => (f(a), g(a)))(G product H)
 
-  def compose[G[_]](implicit G: Traverse[G]): Traverse[({type f[x] = F[G[x]]})#f] = ???
+  def compose[G[_]](implicit G: Traverse[G]): Traverse[({type f[x] = F[G[x]]})#f] =
+    new Traverse[({type f[x] = F[G[x]]})#f] {
+      def traverse[H[_] : Applicative, A, B](fa: F[G[A]])(f: A => H[B]): H[F[G[B]]] =
+        
+    }
 }
 
 object Traverse {
